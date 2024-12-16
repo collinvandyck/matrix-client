@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::{Context, Ok, Result};
 use matrix_sdk::{ServerName, matrix_auth::MatrixSession};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -31,17 +31,33 @@ impl App {
             .build()
             .await
             .context("build client")?;
-        if config.session_path.exists() {
-            let bs = fs::read(&config.session_path)
-                .await
-                .context("read session")?;
-            let session: MatrixSession = serde_yaml::from_slice(bs.as_slice()).context("parse session yaml")?;
-            client
-                .restore_session(session)
-                .await
-                .context("restore session");
+        let app = App { config, client };
+        let restored = app
+            .restore_session()
+            .await
+            .context("restore session")?;
+        if !restored {
+            app.login().await.context("login")?;
         }
-        info!("App initialized");
-        Ok(Self { config, client })
+        Ok(app)
+    }
+
+    async fn login(&self) -> Result<()> {
+        todo!()
+    }
+
+    async fn restore_session(&self) -> Result<bool> {
+        if !self.config.session_path.exists() {
+            return Ok(false);
+        }
+        let bs = fs::read(&self.config.session_path)
+            .await
+            .context("read session")?;
+        let session: MatrixSession = serde_yaml::from_slice(bs.as_slice()).context("parse session yaml")?;
+        self.client
+            .restore_session(session)
+            .await
+            .context("restore session")?;
+        Ok(true)
     }
 }

@@ -13,7 +13,6 @@ struct Args {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    info!("Main hi");
     obs::init();
     let args = Args::parse();
     App::start(&args.config).await?;
