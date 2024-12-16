@@ -22,6 +22,6 @@ async fn run() -> anyhow::Result<()> {
     let args = Args::parse();
     let app = App::start(&args.config).await?;
     info!("Application started");
-    tokio::time::sleep(Duration::from_secs(5)).await;
+    std::future::pending::<()>().await;
     Ok(())
 }

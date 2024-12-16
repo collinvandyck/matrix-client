@@ -8,7 +8,7 @@ use matrix_sdk::{
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use tokio::{fs, sync::mpsc};
-use tracing::{info, warn};
+use tracing::{info, instrument, warn};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
@@ -61,6 +61,7 @@ impl App {
     }
 
     // the main control task
+    #[instrument(skip_all)]
     async fn controller(self, mut rx: mpsc::Receiver<Event>) {
         while let Some(ev) = rx.recv().await {
             info!("Event: {ev:?}");
