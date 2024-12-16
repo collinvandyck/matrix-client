@@ -2,7 +2,7 @@
 
 use clap::Parser;
 use matrix_client::{app::App, obs};
-use std::{path::PathBuf, time::Duration};
+use std::{future, path::PathBuf, time::Duration};
 use tracing::info;
 
 #[derive(clap::Parser, Debug)]
@@ -22,6 +22,6 @@ async fn run() -> anyhow::Result<()> {
     let args = Args::parse();
     let app = App::start(&args.config).await?;
     info!("Application started");
-    std::future::pending::<()>().await;
+    future::pending::<()>().await;
     Ok(())
 }

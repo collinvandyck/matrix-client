@@ -1,9 +1,12 @@
 use anyhow::{Context, Result, bail};
 use futures_util::StreamExt;
 use matrix_sdk::{
-    AuthSession, ServerName,
+    AuthSession, Client, ServerName,
     encryption::{BackupDownloadStrategy, EncryptionSettings, VerificationState},
     matrix_auth::MatrixSession,
+    ruma::events::{
+        key::verification::request::ToDeviceKeyVerificationRequestEvent, room::message::OriginalSyncRoomMessageEvent,
+    },
 };
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -22,13 +25,15 @@ pub struct Config {
 #[derive(Clone)]
 pub struct App {
     config: Config,
-    client: matrix_sdk::Client,
+    client: Client,
     tx: mpsc::Sender<Event>,
 }
 
 #[derive(Debug, Clone)]
 enum Event {
-    Verification(VerificationState),
+    VerificationState(VerificationState),
+    SyncRoom(OriginalSyncRoomMessageEvent),
+    VerificationRequest(ToDeviceKeyVerificationRequestEvent),
 }
 
 impl App {
@@ -36,7 +41,8 @@ impl App {
         info!("Starting app");
         let bs = fs::read(config_p).await.context("read config")?;
         let config: Config = serde_yaml::from_slice(bs.as_slice()).context("parse config yaml")?;
-        let client = matrix_sdk::Client::builder()
+        let (tx, rx) = mpsc::channel(1024);
+        let client = Client::builder()
             .homeserver_url(&config.homeserver_url)
             .sqlite_store(&config.db_path, None)
             .with_encryption_settings(EncryptionSettings {
@@ -46,8 +52,10 @@ impl App {
             .build()
             .await
             .context("build client")?;
-        let (tx, rx) = mpsc::channel(1024);
+
         let app = App { config, client, tx };
+        app.register_event_handlers();
+
         app.auth().await.context("auth")?;
 
         info!("Spawning verification listener");
@@ -68,12 +76,32 @@ impl App {
         }
     }
 
+    async fn register_event_handlers(&self) {
+        info!("Registering event handlers");
+        macro_rules! event {
+            ($ev:ident, $wrap:expr) => {{
+                let tx = self.tx.clone();
+                self.client
+                    .add_event_handler(move |ev: $ev, _: Client| {
+                        async move {
+                            let ev = $wrap(ev);
+                            if let Err(err) = tx.send(ev).await {
+                                warn!("could not send event to control thread: {err}");
+                            }
+                        }
+                    });
+            }};
+        }
+        event!(OriginalSyncRoomMessageEvent, Event::SyncRoom);
+        event!(ToDeviceKeyVerificationRequestEvent, Event::VerificationRequest);
+    }
+
     async fn verification_listener(self) {
         let mut vs = self.client.encryption().verification_state();
         while let Some(vs) = vs.next().await {
             if self
                 .tx
-                .send(Event::Verification(vs))
+                .send(Event::VerificationState(vs))
                 .await
                 .is_err()
             {
