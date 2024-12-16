@@ -76,7 +76,7 @@ impl App {
         }
     }
 
-    async fn register_event_handlers(&self) {
+    fn register_event_handlers(&self) {
         info!("Registering event handlers");
         macro_rules! event {
             ($ev:ident, $wrap:expr) => {{

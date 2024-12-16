@@ -8,6 +8,7 @@ anyhow = "1.0.94"
 clap = { version = "4.5.23", features = ["derive"] }
 futures-util = "0.3.31"
 matrix-sdk = { version = "0.8.0", features = ["anyhow"] }
+matrix-sdk-ui = "0.8.0"
 rand = "0.8.5"
 regex = "1.11.1"
 serde = { version = "1.0.216", features = ["derive"] }
