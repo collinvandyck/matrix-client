@@ -39,7 +39,7 @@ pub struct App {
     tx: mpsc::Sender<Event>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, strum::Display)]
 enum Event {
     VerificationState(VerificationState),
     SyncRoom(OriginalSyncRoomMessageEvent),
@@ -81,7 +81,7 @@ impl App {
     async fn controller(self, mut rx: mpsc::Receiver<Event>) {
         info!("Controller task starting");
         while let Some(ev) = rx.recv().await {
-            info!("Event: {ev:?}");
+            info!("Event: {ev}");
         }
     }
 
