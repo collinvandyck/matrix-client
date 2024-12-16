@@ -1,3 +1,4 @@
 /target
 config.yaml
-/data.db
+data.db
+session.yaml

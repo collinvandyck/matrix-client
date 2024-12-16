@@ -1,9 +1,9 @@
-use anyhow::{Context, Ok, Result};
-use matrix_sdk::{ServerName, matrix_auth::MatrixSession};
+use anyhow::{Context, Result, bail};
+use matrix_sdk::{AuthSession, ServerName, matrix_auth::MatrixSession};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use tokio::fs;
-use tracing::info;
+use tracing::{info, warn};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
@@ -32,17 +32,42 @@ impl App {
             .await
             .context("build client")?;
         let app = App { config, client };
-        let restored = app
-            .restore_session()
-            .await
-            .context("restore session")?;
-        if !restored {
-            app.login().await.context("login")?;
-        }
+        app.auth().await.context("auth")?;
         Ok(app)
     }
 
+    async fn auth(&self) -> Result<()> {
+        let f = self.restore_session().await;
+        match self.restore_session().await {
+            Ok(true) => return Ok(()),
+            Ok(false) => {}
+            Err(err) => warn!("Session restore failed: {err}. Falling back to login"),
+        };
+        self.login().await.context("login")
+    }
+
     async fn login(&self) -> Result<()> {
+        let resp = self
+            .client
+            .matrix_auth()
+            .login_username(&self.config.username, &self.config.password)
+            .initial_device_display_name("collin-matrix-client")
+            .await
+            .context("matrix auth")?;
+        info!("Login resp: {resp:#?}");
+        let session = self
+            .client
+            .session()
+            .context("no session after login")?;
+        match session {
+            AuthSession::Matrix(session) => {
+                let s = serde_yaml::to_string(&session).context("serialize session")?;
+                fs::write(&self.config.session_path, s.as_bytes())
+                    .await
+                    .context("write session")?;
+            }
+            _ => bail!("unknown session typ: {session:?}"),
+        }
         todo!()
     }
 
