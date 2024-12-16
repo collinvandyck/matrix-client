@@ -32,6 +32,14 @@ pub struct Config {
     homeserver_url: String,
 }
 
+impl Config {
+    pub async fn load(p: &Path) -> Result<Self> {
+        let bs = fs::read(p).await.context("read config")?;
+        let config = serde_yaml::from_slice(bs.as_slice()).context("parse yaml")?;
+        Ok(config)
+    }
+}
+
 #[derive(Clone)]
 pub struct App {
     config: Config,
@@ -52,8 +60,7 @@ enum Event {
 impl App {
     pub async fn start(config_p: &Path) -> Result<Self> {
         info!("Starting app");
-        let bs = fs::read(config_p).await.context("read config")?;
-        let config: Config = serde_yaml::from_slice(bs.as_slice()).context("parse config yaml")?;
+        let config = Config::load(config_p).await?;
         let (tx, rx) = mpsc::channel(1024);
         let client = Client::builder()
             .homeserver_url(&config.homeserver_url)

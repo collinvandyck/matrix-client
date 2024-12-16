@@ -1,6 +1,7 @@
+use std::path::Path;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-pub fn init() {
+pub fn init(log: &Path) {
     let ef = tracing_subscriber::EnvFilter::new("error,matrix_client=info");
     let stderr_layer = tracing_subscriber::fmt::layer()
         .with_writer(std::io::stderr)

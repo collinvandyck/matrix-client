@@ -1,12 +1,17 @@
 #![allow(unused)]
 
 use clap::Parser;
-use matrix_client::{app::App, obs};
+use matrix_client::{
+    app::{App, Config},
+    obs,
+};
 use std::{future, path::PathBuf, time::Duration};
 use tracing::info;
 
 #[derive(clap::Parser, Debug)]
 struct Args {
+    #[arg(long, default_value = "matrix-client.log")]
+    log: PathBuf,
     #[arg(long, default_value = "config.yaml")]
     config: PathBuf,
 }
@@ -18,8 +23,8 @@ async fn main() -> anyhow::Result<()> {
 }
 
 async fn run() -> anyhow::Result<()> {
-    obs::init();
     let args = Args::parse();
+    obs::init(&args.log);
     let app = App::start(&args.config).await?;
     info!("Application started");
     future::pending::<()>().await;
