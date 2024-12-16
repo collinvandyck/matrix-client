@@ -1,7 +1,9 @@
 #![allow(unused)]
 
 use clap::Parser;
+use matrix_client::{app::App, obs};
 use std::path::PathBuf;
+use tracing::info;
 
 #[derive(clap::Parser, Debug)]
 struct Args {
@@ -11,7 +13,9 @@ struct Args {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    info!("Main hi");
+    obs::init();
     let args = Args::parse();
-    matrix_client::app::App::start(&args.config).await?;
+    App::start(&args.config).await?;
     Ok(())
 }
