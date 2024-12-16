@@ -1,15 +1,25 @@
 use anyhow::{Context, Result, bail};
-use futures_util::StreamExt;
+use futures_util::{StreamExt, pin_mut};
 use matrix_sdk::{
     AuthSession, Client, ServerName,
+    config::SyncSettings,
     encryption::{BackupDownloadStrategy, EncryptionSettings, VerificationState},
     matrix_auth::MatrixSession,
     ruma::events::{
         key::verification::request::ToDeviceKeyVerificationRequestEvent, room::message::OriginalSyncRoomMessageEvent,
     },
 };
+use matrix_sdk_ui::{
+    RoomListService,
+    eyeball_im::VectorDiff,
+    room_list_service::{self, RoomList, filters::new_filter_non_left},
+    sync_service::{self, SyncService},
+};
 use serde::{Deserialize, Serialize};
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 use tokio::{fs, sync::mpsc};
 use tracing::{info, instrument, warn};
 
@@ -29,11 +39,14 @@ pub struct App {
     tx: mpsc::Sender<Event>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 enum Event {
     VerificationState(VerificationState),
     SyncRoom(OriginalSyncRoomMessageEvent),
     VerificationRequest(ToDeviceKeyVerificationRequestEvent),
+    SyncServiceState(sync_service::State),
+    RoomDiff(Vec<VectorDiff<room_list_service::Room>>),
+    FatalMatrixErr(matrix_sdk::Error),
 }
 
 impl App {
@@ -56,14 +69,9 @@ impl App {
         let app = App { config, client, tx };
         app.auth().await.context("auth")?;
         app.register_event_handlers();
-        app.setup_sync().await.context("setup sync")?;
-
-        info!("Spawning verification listener");
         tokio::spawn(app.clone().verification_listener());
-
-        info!("Spawning controller");
         tokio::spawn(app.clone().controller(rx));
-
+        app.setup_sync().await.context("setup sync")?;
         info!("App initialized");
         Ok(app)
     }
@@ -71,6 +79,7 @@ impl App {
     // the main control task
     #[instrument(skip_all)]
     async fn controller(self, mut rx: mpsc::Receiver<Event>) {
+        info!("Controller task starting");
         while let Some(ev) = rx.recv().await {
             info!("Event: {ev:?}");
         }
@@ -97,21 +106,34 @@ impl App {
     }
 
     async fn setup_sync(&self) -> Result<()> {
-        todo!()
-    }
-
-    async fn verification_listener(self) {
-        let mut vs = self.client.encryption().verification_state();
-        while let Some(vs) = vs.next().await {
-            if self
-                .tx
-                .send(Event::VerificationState(vs))
-                .await
-                .is_err()
-            {
-                break;
+        info!("Setting up sync");
+        let settings = SyncSettings::default();
+        let sync_service = SyncService::builder(self.client.clone())
+            .build()
+            .await
+            .context("build sync service")?;
+        let state = sync_service.state();
+        tokio::spawn(self.clone().sync_state_listener(state));
+        let room_list_service = sync_service.room_list_service();
+        let all_rooms = room_list_service
+            .all_rooms()
+            .await
+            .context("get all rooms listener")?;
+        tokio::spawn(self.clone().room_list_listener(all_rooms));
+        info!("Starting sync service");
+        sync_service.start().await;
+        info!("Performing first client sync");
+        self.client
+            .sync_once(settings.clone())
+            .await
+            .context("first client sync")?;
+        let sync = self.clone();
+        tokio::spawn(async move {
+            if let Err(err) = sync.client.sync(settings).await {
+                let _ = sync.tx.send(Event::FatalMatrixErr(err)).await;
             }
-        }
+        });
+        Ok(())
     }
 
     async fn auth(&self) -> Result<()> {
@@ -167,5 +189,47 @@ impl App {
             .await
             .context("restore session")?;
         Ok(true)
+    }
+
+    async fn room_list_listener(self, rooms: RoomList) {
+        info!("Starting room list listener");
+        let (stream, controller) = rooms.entries_with_dynamic_adapters(5);
+        controller.set_filter(Box::new(new_filter_non_left()));
+        pin_mut!(stream);
+        while let Some(diffs) = stream.next().await {
+            let ev = Event::RoomDiff(diffs);
+            if self.tx.send(ev).await.is_err() {
+                break;
+            }
+        }
+    }
+
+    async fn sync_state_listener(self, mut state: eyeball::Subscriber<sync_service::State>) {
+        info!("Starting sync state listener");
+        while let Some(state) = state.next().await {
+            if self
+                .tx
+                .send(Event::SyncServiceState(state))
+                .await
+                .is_err()
+            {
+                break;
+            }
+        }
+    }
+
+    async fn verification_listener(self) {
+        info!("Starting verification listener");
+        let mut vs = self.client.encryption().verification_state();
+        while let Some(vs) = vs.next().await {
+            if self
+                .tx
+                .send(Event::VerificationState(vs))
+                .await
+                .is_err()
+            {
+                break;
+            }
+        }
     }
 }

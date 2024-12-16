@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.94"
 clap = { version = "4.5.23", features = ["derive"] }
+eyeball = "0.8.8"
 futures-util = "0.3.31"
 matrix-sdk = { version = "0.8.0", features = ["anyhow"] }
 matrix-sdk-ui = "0.8.0"

@@ -1711,6 +1711,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
+ "eyeball",
  "futures-util",
  "matrix-sdk",
  "matrix-sdk-ui",
