@@ -2,7 +2,7 @@
 
 use clap::Parser;
 use matrix_client::{app::App, obs};
-use std::path::PathBuf;
+use std::{path::PathBuf, time::Duration};
 use tracing::info;
 
 #[derive(clap::Parser, Debug)]
@@ -13,8 +13,15 @@ struct Args {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    let jh = tokio::task::spawn(run());
+    jh.await?
+}
+
+async fn run() -> anyhow::Result<()> {
     obs::init();
     let args = Args::parse();
-    App::start(&args.config).await?;
+    let app = App::start(&args.config).await?;
+    info!("Application started");
+    tokio::time::sleep(Duration::from_secs(5)).await;
     Ok(())
 }

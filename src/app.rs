@@ -1,5 +1,9 @@
 use anyhow::{Context, Result, bail};
-use matrix_sdk::{AuthSession, ServerName, matrix_auth::MatrixSession};
+use matrix_sdk::{
+    AuthSession, ServerName,
+    encryption::{BackupDownloadStrategy, EncryptionSettings},
+    matrix_auth::MatrixSession,
+};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use tokio::fs;
@@ -28,8 +32,8 @@ impl App {
         let client = matrix_sdk::Client::builder()
             .homeserver_url(&config.homeserver_url)
             .sqlite_store(&config.db_path, None)
-            .with_encryption_settings(matrix_sdk::encryption::EncryptionSettings {
-                backup_download_strategy: matrix_sdk::encryption::BackupDownloadStrategy::AfterDecryptionFailure,
+            .with_encryption_settings(EncryptionSettings {
+                backup_download_strategy: BackupDownloadStrategy::AfterDecryptionFailure,
                 ..Default::default()
             })
             .build()
@@ -37,6 +41,7 @@ impl App {
             .context("build client")?;
         let app = App { config, client };
         app.auth().await.context("auth")?;
+        info!("App initialized");
         Ok(app)
     }
 
