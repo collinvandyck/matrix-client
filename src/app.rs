@@ -54,9 +54,9 @@ impl App {
             .context("build client")?;
 
         let app = App { config, client, tx };
-        app.register_event_handlers();
-
         app.auth().await.context("auth")?;
+        app.register_event_handlers();
+        app.setup_sync().await.context("setup sync")?;
 
         info!("Spawning verification listener");
         tokio::spawn(app.clone().verification_listener());
@@ -94,6 +94,10 @@ impl App {
         }
         event!(OriginalSyncRoomMessageEvent, Event::SyncRoom);
         event!(ToDeviceKeyVerificationRequestEvent, Event::VerificationRequest);
+    }
+
+    async fn setup_sync(&self) -> Result<()> {
+        todo!()
     }
 
     async fn verification_listener(self) {
