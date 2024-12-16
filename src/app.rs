@@ -28,6 +28,10 @@ impl App {
         let client = matrix_sdk::Client::builder()
             .homeserver_url(&config.homeserver_url)
             .sqlite_store(&config.db_path, None)
+            .with_encryption_settings(matrix_sdk::encryption::EncryptionSettings {
+                backup_download_strategy: matrix_sdk::encryption::BackupDownloadStrategy::AfterDecryptionFailure,
+                ..Default::default()
+            })
             .build()
             .await
             .context("build client")?;
@@ -37,16 +41,20 @@ impl App {
     }
 
     async fn auth(&self) -> Result<()> {
-        let f = self.restore_session().await;
+        info!("Initializing auth");
         match self.restore_session().await {
-            Ok(true) => return Ok(()),
-            Ok(false) => {}
+            Ok(true) => {
+                info!("Session restored");
+                return Ok(());
+            }
+            Ok(false) => info!("No session was found"),
             Err(err) => warn!("Session restore failed: {err}. Falling back to login"),
         };
         self.login().await.context("login")
     }
 
     async fn login(&self) -> Result<()> {
+        info!("Attempting login");
         let resp = self
             .client
             .matrix_auth()
@@ -75,6 +83,7 @@ impl App {
         if !self.config.session_path.exists() {
             return Ok(false);
         }
+        info!("Restoring session");
         let bs = fs::read(&self.config.session_path)
             .await
             .context("read session")?;
