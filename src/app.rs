@@ -1,12 +1,13 @@
 use anyhow::{Context, Result, bail};
+use futures_util::StreamExt;
 use matrix_sdk::{
     AuthSession, ServerName,
-    encryption::{BackupDownloadStrategy, EncryptionSettings},
+    encryption::{BackupDownloadStrategy, EncryptionSettings, VerificationState},
     matrix_auth::MatrixSession,
 };
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
-use tokio::fs;
+use tokio::{fs, sync::mpsc};
 use tracing::{info, warn};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -22,6 +23,12 @@ pub struct Config {
 pub struct App {
     config: Config,
     client: matrix_sdk::Client,
+    tx: mpsc::Sender<Event>,
+}
+
+#[derive(Debug, Clone)]
+enum Event {
+    Verification(VerificationState),
 }
 
 impl App {
@@ -39,10 +46,39 @@ impl App {
             .build()
             .await
             .context("build client")?;
-        let app = App { config, client };
+        let (tx, rx) = mpsc::channel(1024);
+        let app = App { config, client, tx };
         app.auth().await.context("auth")?;
+
+        info!("Spawning verification listener");
+        tokio::spawn(app.clone().verification_listener());
+
+        info!("Spawning controller");
+        tokio::spawn(app.clone().controller(rx));
+
         info!("App initialized");
         Ok(app)
+    }
+
+    // the main control task
+    async fn controller(self, mut rx: mpsc::Receiver<Event>) {
+        while let Some(ev) = rx.recv().await {
+            info!("Event: {ev:?}");
+        }
+    }
+
+    async fn verification_listener(self) {
+        let mut vs = self.client.encryption().verification_state();
+        while let Some(vs) = vs.next().await {
+            if self
+                .tx
+                .send(Event::Verification(vs))
+                .await
+                .is_err()
+            {
+                break;
+            }
+        }
     }
 
     async fn auth(&self) -> Result<()> {
