@@ -24,7 +24,7 @@ async fn main() -> anyhow::Result<()> {
 
 async fn run() -> anyhow::Result<()> {
     let args = Args::parse();
-    obs::init(&args.log);
+    let _guard = obs::init(&args.log)?;
     let app = App::start(&args.config).await?;
     info!("Application started");
     future::pending::<()>().await;
